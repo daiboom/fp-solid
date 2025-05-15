@@ -1,3 +1,9 @@
+import { PaymentResult } from "./types";
+
+const CYAN_COLOR = "\x1b[36m";
+const RESET_COLOR = "\x1b[0m";
+const NUMBER_FORMATTER = new Intl.NumberFormat("ko-KR");
+
 type LogStepParams = {
   title: string;
   prevAmount: number;
@@ -5,19 +11,41 @@ type LogStepParams = {
   newAmount: number;
 };
 
+const formatCurrency = (num: number) => `${NUMBER_FORMATTER.format(num)}원`;
+
 export const logStep = ({
   title,
   prevAmount,
   discount,
   newAmount,
 }: LogStepParams) => {
-  const format = (num: number) => num.toLocaleString("ko-KR") + "원";
-  const color = (text: string) => `\x1b[36m${text}\x1b[0m`;
-
   console.log(
-    `\n${color(`[${title}]`)}\n` +
-      `- 적용 전 금액: ${format(prevAmount)}\n` +
-      `- 할인/차감 금액: ${format(discount)}\n` +
-      `- 적용 후 금액: ${format(newAmount)}`
+    `\n${CYAN_COLOR}[${title}]${RESET_COLOR}\n` +
+      `- 적용 전 금액: ${formatCurrency(prevAmount)}\n` +
+      `- 할인/차감 금액: ${formatCurrency(discount)}\n` +
+      `- 적용 후 금액: ${formatCurrency(newAmount)}`
   );
+};
+
+const getPrevAmount = (input: unknown): number => {
+  if (typeof input !== "object" || input === null) return 0;
+
+  return "finalAmount" in input
+    ? (input as PaymentResult).finalAmount
+    : (input as { amount: number }).amount;
+};
+
+export const withLogging = <T extends (...args: any[]) => PaymentResult>(
+  fn: T,
+  title: string
+) => {
+  return (...args: Parameters<T>): PaymentResult => {
+    const prevAmount = getPrevAmount(args[0]);
+    const result = fn(...args);
+    const discount = prevAmount - result.finalAmount;
+
+    logStep({ title, prevAmount, discount, newAmount: result.finalAmount });
+
+    return result;
+  };
 };

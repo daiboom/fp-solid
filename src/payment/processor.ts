@@ -5,20 +5,33 @@ import {
   applyPoints,
   applyCardDiscount,
 } from "./calculations";
+import { withLogging } from "./utils";
 
-// 결제 처리 파이프라인 (DIP: 의존성 역전 원칙, OCP: pipeline 확장 가능)
+type PipeLineStep<T, U> = (input: T) => U;
+
 export const processPayment = (request: PaymentRequest): PaymentResult => {
-  
-  const pipeline = [
-    (result: PaymentResult) =>
-      applyAdditionalDiscount(result, request.additionalDiscountRate),
-    (result: PaymentResult) => applyPoints(result, request.usedPoints),
-    (result: PaymentResult) =>
-      applyCardDiscount(result, request.cardDiscountRate),
+  // 1. 기본 할인 단계 (PaymentRequest → PaymentResult)
+  const initialStep = withLogging(
+    () => applyBaseDiscount(request),
+    "기본 할인 적용"
+  )();
+
+  // 2. 후속 단계 (PaymentResult → PaymentResult)
+  const processingSteps: PipeLineStep<PaymentResult, PaymentResult>[] = [
+    withLogging(
+      (result) =>
+        applyAdditionalDiscount(result, request.additionalDiscountRate),
+      "추가 할인 적용"
+    ),
+    withLogging(
+      (result) => applyCardDiscount(result, request.cardDiscountRate),
+      "카드사 할인 적용"
+    ),
+    withLogging(
+      (result) => applyPoints(result, request.usedPoints),
+      "포인트 사용"
+    ),
   ];
 
-  return pipeline.reduce(
-    (result, fn) => fn(result),
-    applyBaseDiscount(request)
-  );
+  return processingSteps.reduce((acc, step) => step(acc), initialStep);
 };
